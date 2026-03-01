@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 
 import {
-  GET_ORDERS_CUSTOMER,
-  GET_ORDERS_DATE_RANGE,
-  GET_ORDERS_NO_FILTER,
+  createOrdersQueryDocument,
+  type OrdersData,
+  type OrdersFilterVars,
 } from '@/graphql/queries/orders'
 
 import { DEBOUNCE_MS, PAGE_SIZE } from '@/utils/constants'
@@ -13,7 +13,6 @@ import { useDebounce } from '@/hooks/useDebounce'
 
 import { SortDirection } from '@/types/common'
 import { ORDER_FIELDS, ORDER_FILTERS } from '@/types/modules/order'
-import type { OrdersConnection } from '@/types/modules/order'
 
 import type { CursorState } from './type'
 
@@ -84,12 +83,20 @@ export function useFilterOrders() {
   useEffect(() => {
     resetPage()
   }, [debouncedFilters, resetPage])
-  const customerName = (debouncedFilters.customer ?? '').trim()
-  const hasCustomer = customerName.length > 0
 
-  const dateFrom = debouncedFilters.dateFrom ?? null
-  const dateTo = debouncedFilters.dateTo ?? null
-  const hasDateRange = Boolean(dateFrom) && Boolean(dateTo)
+  const customerName = (debouncedFilters.customer ?? '').trim() || undefined
+  const dateFrom = debouncedFilters.dateFrom ?? undefined
+  const dateTo = debouncedFilters.dateTo ?? undefined
+
+  const queryDoc = useMemo(
+    () =>
+      createOrdersQueryDocument({
+        customerName,
+        dateFrom,
+        dateTo,
+      }),
+    [customerName, dateFrom, dateTo]
+  )
 
   const paginationVars =
     cursorState.direction === 'forward'
@@ -101,22 +108,15 @@ export function useFilterOrders() {
       ? [{ customer: { companyName: sortConfig.direction } }]
       : [{ [sortConfig.field]: sortConfig.direction }]
 
-  const queryDoc = hasCustomer
-    ? GET_ORDERS_CUSTOMER
-    : hasDateRange
-      ? GET_ORDERS_DATE_RANGE
-      : GET_ORDERS_NO_FILTER
-
-  const variables: any = {
+  const variables: OrdersFilterVars = {
     ...paginationVars,
     order,
-    ...(hasCustomer ? { customerName } : {}),
-    ...(hasDateRange ? { dateFrom, dateTo } : {}),
+    customerName,
+    dateFrom,
+    dateTo,
   }
 
-  const { data, loading, error, refetch } = useQuery<{ orders: OrdersConnection }>(queryDoc, {
-    variables,
-  })
+  const { data, loading, error, refetch } = useQuery<OrdersData>(queryDoc, { variables })
 
   return {
     filters,

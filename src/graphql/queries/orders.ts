@@ -1,5 +1,5 @@
 import type { OrdersConnection, OrderSortInput } from '@/types/modules/order'
-import { gql, type TypedDocumentNode } from '@apollo/client'
+import { gql } from '@apollo/client'
 
 export const ORDER_LIST_FIELDS = gql`
   fragment OrderListFields on OrdersConnection {
@@ -19,7 +19,7 @@ export const ORDER_LIST_FIELDS = gql`
   }
 `
 
-type OrdersData = { orders: OrdersConnection }
+export type OrdersData = { orders: OrdersConnection }
 
 type BaseVars = {
   first?: number
@@ -29,101 +29,109 @@ type BaseVars = {
   order?: OrderSortInput[]
 }
 
-export const GET_ORDERS_NO_FILTER: TypedDocumentNode<OrdersData, BaseVars> = gql`
-  ${ORDER_LIST_FIELDS}
-  query GetOrdersNoFilter(
-    $first: Int
-    $after: String
-    $last: Int
-    $before: String
-    $order: [OrderSortInput!]
-  ) {
-    orders(first: $first, after: $after, last: $last, before: $before, order: $order) {
-      ...OrderListFields
-    }
-  }
-`
+export type OrdersFilterVars = BaseVars & {
+  customerName?: string
+  dateFrom?: string
+  dateTo?: string
+}
 
-export const GET_ORDERS_CUSTOMER: TypedDocumentNode<
-  OrdersData,
-  BaseVars & { customerName: string }
-> = gql`
-  ${ORDER_LIST_FIELDS}
-  query GetOrdersCustomer(
-    $first: Int
-    $after: String
-    $last: Int
-    $before: String
-    $order: [OrderSortInput!]
-    $customerName: String!
-  ) {
-    orders(
-      first: $first
-      after: $after
-      last: $last
-      before: $before
-      order: $order
-      where: { customer: { companyName: { contains: $customerName } } }
+type OrdersFilterArgs = {
+  customerName?: string
+  dateFrom?: string | null
+  dateTo?: string | null
+}
+
+export function createOrdersQueryDocument(filters: OrdersFilterArgs) {
+  const extraVariables: string[] = []
+  const whereFields: string[] = []
+
+  if (!!filters.customerName?.trim()) {
+    extraVariables.push(`$customerName: String!`)
+    whereFields.push(`customer: { companyName: { contains: $customerName } }`)
+  }
+
+  if (!!filters.dateFrom && !!filters.dateTo) {
+    extraVariables.push(`$dateFrom: LocalDate!`, `$dateTo: LocalDate!`)
+    whereFields.push(`orderDate: { gte: $dateFrom, lte: $dateTo }`)
+  }
+
+  const whereBlock =
+    whereFields.length > 0
+      ? `
+        where: {
+          ${whereFields.join('\n')}
+        }
+      `
+      : ''
+
+  return gql`
+    ${ORDER_LIST_FIELDS}
+    query GetOrders(
+      $first: Int
+      $after: String
+      $last: Int
+      $before: String
+      $order: [OrderSortInput!]
+      ${extraVariables.join('\n')}
     ) {
-      ...OrderListFields
-    }
-  }
-`
-
-export const GET_ORDERS_DATE_RANGE: TypedDocumentNode<
-  OrdersData,
-  BaseVars & { dateFrom: string; dateTo: string }
-> = gql`
-  ${ORDER_LIST_FIELDS}
-  query GetOrdersDateRange(
-    $first: Int
-    $after: String
-    $last: Int
-    $before: String
-    $order: [OrderSortInput!]
-    $dateFrom: LocalDate!
-    $dateTo: LocalDate!
-  ) {
-    orders(
-      first: $first
-      after: $after
-      last: $last
-      before: $before
-      order: $order
-      where: { orderDate: { gte: $dateFrom, lte: $dateTo } }
-    ) {
-      ...OrderListFields
-    }
-  }
-`
-
-export const GET_ORDERS_CUSTOMER_DATE_RANGE: TypedDocumentNode<
-  OrdersData,
-  BaseVars & { customerName: string; dateFrom: string; dateTo: string }
-> = gql`
-  ${ORDER_LIST_FIELDS}
-  query GetOrdersCustomerDateRange(
-    $first: Int
-    $after: String
-    $last: Int
-    $before: String
-    $order: [OrderSortInput!]
-    $customerName: String!
-    $dateFrom: LocalDate!
-    $dateTo: LocalDate!
-  ) {
-    orders(
-      first: $first
-      after: $after
-      last: $last
-      before: $before
-      order: $order
-      where: {
-        customer: { companyName: { contains: $customerName } }
-        orderDate: { gte: $dateFrom, lte: $dateTo }
+      orders(
+        first: $first
+        after: $after
+        last: $last
+        before: $before
+        order: $order
+        ${whereBlock}
+      ) {
+        ...OrderListFields
       }
-    ) {
-      ...OrderListFields
+    }
+  `
+}
+
+export const GET_ORDER = gql`
+  query GetOrderHeader($id: ID!) {
+    node(id: $id) {
+      ... on Order {
+        id
+        orderDate
+        requiredDate
+        shippedDate
+        freight
+        shipName
+        shipAddress
+        shipCity
+        shipRegion
+        shipPostalCode
+        shipCountry
+        customer {
+          id
+          companyName
+        }
+        employee {
+          id
+          firstName
+          lastName
+        }
+      }
+    }
+  }
+`
+
+export const GET_ORDER_ITEMS = gql`
+  query GetOrderItems($id: ID!) {
+    node(id: $id) {
+      ... on Order {
+        id
+        orderDetails {
+          unitPrice
+          quantity
+          discount
+          product {
+            id
+            productName
+          }
+        }
+      }
     }
   }
 `
